@@ -11,21 +11,31 @@
     </ul>
     
     <a href="#" class="add-comment">Leave a comment</a>
-    
-    <% if (currentUser){ %>
+
       <div class="comment-form">
-        <div class="author-avatar">
-          <img src="<%= currentUser.avatarUrl %>">
-        </div>
-        <p class="author-name">
-          <%= currentUser.name %>
-        </p>
-        <input type="text" class="comment-box right-of-avatar" placeholder="Leave a comment...">
-        <div class="actions right-of-avatar">
+        <% if (currentUser) { %>
+          <div class="author-avatar">
+            <img src="<%= currentUser.avatarUrl %>">
+          </div>
+          <p class="author-name">
+            <%= currentUser.name %>
+          </p>
+        <% } else { %>
+          <p class="author-name">
+            <input type="text" class="comment-box" placeholder="Name">
+          </p>
+          <p class="author-email">
+            <input type="text" class="comment-box" placeholder="Email">
+          </p>
+        <% } %>
+
+        <textarea placeholder="Leave a comment..." class="comment-box <% if (currentUser) { %>right-of-avatar <% } %>"></textarea>
+        <p class="validation-error"></p>
+
+        <div class="actions <% if (currentUser) { %> right-of-avatar <% } %>">
           <a href="#" class="action-link post">Post</a>
           <a href="#" class="action-link cancel">Cancel</a>
         </div>
       </div>
-    <% } %>
   </div>
 </div>

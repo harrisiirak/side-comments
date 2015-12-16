@@ -2,6 +2,7 @@ var _ = require('./vendor/lodash-custom.js');
 var Template = require('../templates/section.html');
 var CommentTemplate = require('../templates/comment.html');
 var mobileCheck = require('./helpers/mobile-check.js');
+var md5 = require('md5');
 var $ = jQuery;
 
 /**
@@ -10,49 +11,45 @@ var $ = jQuery;
  * @param {Object} eventPipe The Emitter object used for passing around events.
  * @param {Array} comments   The array of comments for this section. Optional.
  */
-function Section( eventPipe, $el, currentUser, comments ) {
-	this.eventPipe = eventPipe;
-	this.$el = $el;
-	this.comments = comments ? comments.comments : [];
-	this.currentUser = currentUser || null;
-	this.clickEventName = mobileCheck() ? 'touchstart' : 'click';
+function Section(eventPipe, $el, currentUser, comments) {
+  this.eventPipe = eventPipe;
+  this.$el = $el;
+  this.comments = comments ? comments.comments : [];
+  this.currentUser = currentUser && Object.keys(currentUser).length || null;
+  this.clickEventName = mobileCheck() ? 'touchstart' : 'click';
 
-	this.id = $el.data('section-id');
+  this.id = $el.data('section-id');
 
-	this.$el.on(this.clickEventName, '.side-comment .marker', _.bind(this.markerClick, this));
-	this.$el.on(this.clickEventName, '.side-comment .add-comment', _.bind(this.addCommentClick, this));
-	this.$el.on(this.clickEventName, '.side-comment .post', _.bind(this.postCommentClick, this));
-	this.$el.on(this.clickEventName, '.side-comment .cancel', _.bind(this.cancelCommentClick, this));
-	this.$el.on(this.clickEventName, '.side-comment .delete', _.bind(this.deleteCommentClick, this));
-	this.render();
+  this.$el.on(this.clickEventName, '.side-comment .marker', _.bind(this.markerClick, this));
+  this.$el.on(this.clickEventName, '.side-comment .add-comment', _.bind(this.addCommentClick, this));
+  this.$el.on(this.clickEventName, '.side-comment .post', _.bind(this.postCommentClick, this));
+  this.$el.on(this.clickEventName, '.side-comment .cancel', _.bind(this.cancelCommentClick, this));
+  this.$el.on(this.clickEventName, '.side-comment .delete', _.bind(this.deleteCommentClick, this));
+  this.render();
 }
 
 /**
  * Click callback event on markers.
  * @param  {Object} event The event object.
  */
-Section.prototype.markerClick = function( event ) {
-	event.preventDefault();
-	this.select();
+Section.prototype.markerClick = function (event) {
+  event.preventDefault();
+  this.select();
 };
 
 /**
  * Callback for the comment button click event.
  * @param {Object} event The event object.
  */
-Section.prototype.addCommentClick = function( event ) {
+Section.prototype.addCommentClick = function (event) {
   event.preventDefault();
-  if (this.currentUser) {
-  	this.showCommentForm();
-  } else {
-  	this.eventPipe.emit('addCommentAttempted');
-  }
+  this.showCommentForm();
 };
 
 /**
  * Show the comment form for this section.
  */
-Section.prototype.showCommentForm = function() {
+Section.prototype.showCommentForm = function () {
   if (this.comments.length > 0) {
     this.$el.find('.add-comment').addClass('hide');
     this.$el.find('.comment-form').addClass('active');
@@ -64,7 +61,7 @@ Section.prototype.showCommentForm = function() {
 /**
  * Hides the comment form for this section.
  */
-Section.prototype.hideCommentForm = function() {
+Section.prototype.hideCommentForm = function () {
   if (this.comments.length > 0) {
     this.$el.find('.add-comment').removeClass('hide');
     this.$el.find('.comment-form').removeClass('active');
@@ -76,20 +73,20 @@ Section.prototype.hideCommentForm = function() {
 /**
  * Focus on the comment box in the comment form.
  */
-Section.prototype.focusCommentBox = function() {
-	// NOTE: !!HACK!! Using a timeout here because the autofocus causes a weird
-	// "jump" in the form. It renders wider than it should be on screens under 768px
-	// and then jumps to a smaller size.
-	setTimeout(_.bind(function(){
-		this.$el.find('.comment-box').get(0).focus();
-	}, this), 300);
+Section.prototype.focusCommentBox = function () {
+  // NOTE: !!HACK!! Using a timeout here because the autofocus causes a weird
+  // "jump" in the form. It renders wider than it should be on screens under 768px
+  // and then jumps to a smaller size.
+  setTimeout(_.bind(function () {
+    this.$el.find('.comment-box').get(0).focus();
+  }, this), 300);
 };
 
 /**
  * Cancel comment callback.
  * @param  {Object} event The event object.
  */
-Section.prototype.cancelCommentClick = function( event ) {
+Section.prototype.cancelCommentClick = function (event) {
   event.preventDefault();
   this.cancelComment();
 };
@@ -97,11 +94,11 @@ Section.prototype.cancelCommentClick = function( event ) {
 /**
  * Cancel adding of a comment.
  */
-Section.prototype.cancelComment = function() {
+Section.prototype.cancelComment = function () {
   if (this.comments.length > 0) {
     this.hideCommentForm();
   } else {
-  	this.deselect();
+    this.deselect();
     this.eventPipe.emit('hideComments');
   }
 };
@@ -110,7 +107,7 @@ Section.prototype.cancelComment = function() {
  * Post comment callback.
  * @param  {Object} event The event object.
  */
-Section.prototype.postCommentClick = function( event ) {
+Section.prototype.postCommentClick = function (event) {
   event.preventDefault();
   this.postComment();
 };
@@ -118,18 +115,70 @@ Section.prototype.postCommentClick = function( event ) {
 /**
  * Post a comment to this section.
  */
-Section.prototype.postComment = function() {
-	var $commentBox = this.$el.find('.comment-box');
-  var commentBody = $commentBox.val();
+Section.prototype.postComment = function () {
+  var $nameInput = this.$el.find('p[class="author-name"] > input');
+  var $emailInput = this.$el.find('p[class="author-email"] > input');
+  var $bodyTextArea = this.$el.find('textarea');
+  var $errorContainer = this.$el.find('.validation-error');
+
+  var name = $nameInput.val();
+  var email = $emailInput.val();
+  var body = $bodyTextArea.val();
+
+  var error = null;
+  $errorContainer.hide();
+
+  // Require name and email validation for guest user
+  if (!this.currentUser) {
+    var emailRegex = /^(([^<>()[\]\.,;:\s@\"]+(\.[^<>()[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i;
+
+    if (!name || name.length < 2) {
+      error = 'Name is too short';
+    } else if (!email || !emailRegex.test(email)) {
+      error = 'Email is invalid';
+    }
+  }
+
+  // Validate body
+  if (!error && (!body || body.length < 5)) {
+    error = 'Content is too short/missing';
+  }
+
+  // Display error if set
+  if (error) {
+    $errorContainer.html(error);
+    $errorContainer.show();
+    return false;
+  }
+
+  // Build comment payload
   var comment = {
-  	sectionId: this.id,
-  	comment: commentBody,
-  	authorAvatarUrl: this.currentUser.avatarUrl,
-  	authorName: this.currentUser.name,
-  	authorId: this.currentUser.id,
-  	authorUrl: this.currentUser.authorUrl || null
+    sectionId: this.id,
+    comment: body
   };
-  $commentBox.val(''); // Clear the comment.
+
+  // Authorized user
+  if (this.currentUser) {
+    comment.authorName = this.currentUser.name;
+    comment.authorId = this.currentUser.id;
+    comment.authorUrl = this.currentUser.authorUrl || null;
+    comment.authorAvatarUrl = this.currentUser.avatarUrl;
+  } else {
+    comment.authorName = name;
+    comment.authorId = null;
+    comment.authorUrl = null;
+    comment.authorEmail = email;
+    comment.authorAvatarUrl = 'https://www.gravatar.com/avatar/' + md5(email) + '?s=40';
+  }
+
+  // Clean inputs
+  $nameInput.val('');
+  $emailInput.val('');
+  $bodyTextArea.val('');
+  $errorContainer.val('');
+  $errorContainer.hide();
+
+  // Emit event
   this.eventPipe.emit('commentPosted', comment);
 };
 
@@ -137,125 +186,125 @@ Section.prototype.postComment = function() {
  * Insert a comment into this sections comment list.
  * @param  {Object} comment A comment object.
  */
-Section.prototype.insertComment = function( comment ) {
-	this.comments.push(comment);
-	var newCommentHtml = _.template(CommentTemplate, {
-		comment: comment,
-		currentUser: this.currentUser
-	});
-	this.$el.find('.comments').append(newCommentHtml);
-	this.$el.find('.side-comment').addClass('has-comments');
-	this.updateCommentCount();
-	this.hideCommentForm();
+Section.prototype.insertComment = function (comment) {
+  this.comments.push(comment);
+  var newCommentHtml = _.template(CommentTemplate, {
+    comment: comment,
+    currentUser: this.currentUser
+  });
+  this.$el.find('.comments').append(newCommentHtml);
+  this.$el.find('.side-comment').addClass('has-comments');
+  this.updateCommentCount();
+  this.hideCommentForm();
 };
 
 /**
  * Increments the comment count for a given section.
  */
-Section.prototype.updateCommentCount = function() {
-	this.$el.find('.marker span').text(this.comments.length);
+Section.prototype.updateCommentCount = function () {
+  this.$el.find('.marker span').text(this.comments.length);
 };
 
 /**
  * Event handler for delete comment clicks.
  * @param  {Object} event The event object.
  */
-Section.prototype.deleteCommentClick = function( event ) {
-	event.preventDefault();
-	var commentId = $(event.target).closest('li').data('comment-id');
+Section.prototype.deleteCommentClick = function (event) {
+  event.preventDefault();
+  var commentId = $(event.target).closest('li').data('comment-id');
 
-	if (window.confirm("Are you sure you want to delete this comment?")) {
-		this.deleteComment(commentId);
-	}
+  if (window.confirm("Are you sure you want to delete this comment?")) {
+    this.deleteComment(commentId);
+  }
 };
 
 /**
  * Finds the comment and emits an event with the comment to be deleted.
  */
-Section.prototype.deleteComment = function( commentId ) {
-	var comment = _.find(this.comments, { id: commentId });
-	comment.sectionId = this.id;
-	this.eventPipe.emit('commentDeleted', comment);
+Section.prototype.deleteComment = function (commentId) {
+  var comment = _.find(this.comments, {id: commentId});
+  comment.sectionId = this.id;
+  this.eventPipe.emit('commentDeleted', comment);
 };
 
 /**
  * Removes the comment from the list of comments and the comment array.
  * @param commentId The ID of the comment to be removed from this section.
  */
-Section.prototype.removeComment = function( commentId ) {
-	this.comments = _.reject(this.comments, { id: commentId });
-	this.$el.find('.side-comment .comments li[data-comment-id="'+commentId+'"]').remove();
-	this.updateCommentCount();
-	if (this.comments.length < 1) {
-		this.$el.find('.side-comment').removeClass('has-comments');
-	}
+Section.prototype.removeComment = function (commentId) {
+  this.comments = _.reject(this.comments, {id: commentId});
+  this.$el.find('.side-comment .comments li[data-comment-id="' + commentId + '"]').remove();
+  this.updateCommentCount();
+  if (this.comments.length < 1) {
+    this.$el.find('.side-comment').removeClass('has-comments');
+  }
 };
 
 /**
  * Mark this section as selected. Delsect if this section is already selected.
  */
-Section.prototype.select = function() {
-	if (this.isSelected()) {
-		this.deselect();
-		this.eventPipe.emit('sectionDeselected', this);
-	} else {
-		this.$el.find('.side-comment').addClass('active');
+Section.prototype.select = function () {
+  if (this.isSelected()) {
+    this.deselect();
+    this.eventPipe.emit('sectionDeselected', this);
+  } else {
+    this.$el.find('.side-comment').addClass('active');
 
-		if (this.comments.length === 0 && this.currentUser) {
-		  this.focusCommentBox();
-		}
+    if (this.comments.length === 0 && this.currentUser) {
+      this.focusCommentBox();
+    }
 
-		this.eventPipe.emit('sectionSelected', this);
-	}
+    this.eventPipe.emit('sectionSelected', this);
+  }
 };
 
 /**
  * Deselect this section.
  */
-Section.prototype.deselect = function() {
-	this.$el.find('.side-comment').removeClass('active');
-	this.hideCommentForm();
+Section.prototype.deselect = function () {
+  this.$el.find('.side-comment').removeClass('active');
+  this.hideCommentForm();
 };
 
-Section.prototype.isSelected = function() {
-	return this.$el.find('.side-comment').hasClass('active');
+Section.prototype.isSelected = function () {
+  return this.$el.find('.side-comment').hasClass('active');
 };
 
 /**
  * Get the class to be used on the side comment section wrapper.
  * @return {String} The class names to use.
  */
-Section.prototype.sectionClasses = function() {
-	var classes = '';
+Section.prototype.sectionClasses = function () {
+  var classes = '';
 
-	if (this.comments.length > 0) {
-		classes = classes + ' has-comments';
-	}
-	if (!this.currentUser) {
-		classes = classes + ' no-current-user'
-	}
+  if (this.comments.length > 0) {
+    classes = classes + ' has-comments';
+  }
+  if (!this.currentUser) {
+    classes = classes + ' no-current-user'
+  }
 
-	return classes;
+  return classes;
 };
 
 /**
  * Render this section into the DOM.
  */
-Section.prototype.render = function() {
-	this.$el.find('.side-comment').remove();
-	$(_.template(Template, {
-	  commentTemplate: CommentTemplate,
-	  comments: this.comments,
-	  sectionClasses: this.sectionClasses(),
-	  currentUser: this.currentUser
-	})).appendTo(this.$el);
+Section.prototype.render = function () {
+  this.$el.find('.side-comment').remove();
+  $(_.template(Template, {
+    commentTemplate: CommentTemplate,
+    comments: this.comments,
+    sectionClasses: this.sectionClasses(),
+    currentUser: this.currentUser
+  })).appendTo(this.$el);
 };
 
 /**
  * Desttroy this Section object. Generally meaning unbind events.
  */
-Section.prototype.destroy = function() {
-	this.$el.off();
+Section.prototype.destroy = function () {
+  this.$el.off();
 }
 
 module.exports = Section;

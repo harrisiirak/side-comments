@@ -28,7 +28,7 @@
   <script>
     $(document).ready(function(){
       var SideComments = require('side-comments');
-      window.sideComments = new SideComments('#commentable-container', currentUser, existingComments);
+      window.sideComments = new SideComments('#commentable-container', {}, existingComments);
       window.sideComments.on('commentPosted', function( comment ) {
         comment.id = parseInt(Math.random() * (100000 - 1) + 1);
         sideComments.insertComment(comment);
